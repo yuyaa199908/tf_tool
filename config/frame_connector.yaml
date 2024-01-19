@@ -1,0 +1,11 @@
+/**:
+  ros__parameters:
+    frame_parent: "camera_link"
+    frame_child: "rslidar"
+    tf_parent2child:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      roll_deg: 90.0
+      pitch_deg: 0.0
+      raw_deg: 0.0 
