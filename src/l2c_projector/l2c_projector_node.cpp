@@ -1,5 +1,5 @@
 #include "rclcpp/rclcpp.hpp"
-#include "tf_tool/frame_connector_component.hpp"
+#include "tf_tool/l2c_projector_component.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -7,8 +7,8 @@ int main(int argc, char *argv[])
     rclcpp::NodeOptions options;
     options.use_intra_process_comms(true);
 
-    auto frame_connector = std::make_shared<FrameConnectorComponent>(options);
-    rclcpp::spin(frame_connector);
+    auto l2c_projector = std::make_shared<L2CProjectorComponent>(options);
+    rclcpp::spin(l2c_projector);
     
     rclcpp::shutdown();
     return 0;

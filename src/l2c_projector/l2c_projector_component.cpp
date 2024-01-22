@@ -1,4 +1,4 @@
-#include "tf_tool/frame_connector_component.hpp"
+#include "tf_tool/l2c_projector_component.hpp"
 
 #include <math.h> /* M_PI */
 #include <tf2_ros/transform_broadcaster.h>
@@ -7,28 +7,36 @@
 
 using namespace std::chrono_literals;
 
-FrameConnectorComponent::FrameConnectorComponent(const rclcpp::NodeOptions & options)
+L2CProjectorComponent::L2CProjectorComponent(const rclcpp::NodeOptions & options)
 : Node("hoge")
 {
   // dynamic_reconfigure
-  this->declare_parameter<double>("tf_parent2child.x", 0.0);
-  this->declare_parameter<double>("tf_parent2child.y", 0.0);
-  this->declare_parameter<double>("tf_parent2child.z", 0.0);
-  this->declare_parameter<double>("tf_parent2child.roll_deg", 0.0);
-  this->declare_parameter<double>("tf_parent2child.pitch_deg", 0.0);
-  this->declare_parameter<double>("tf_parent2child.yaw_deg", 0.0);
+  // this->declare_parameter<double>("tf_parent2child.x", 0.0);
 
-  // Initialize the transform broadcaster
-  // tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-  tf_broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(*this);
+  // Initialize the transform listener
 
   // parameter callback
   set_init_param();
-  auto parameter_change_cb = std::bind(&FrameConnectorComponent::CB_param_reset, this, std::placeholders::_1);
+  auto parameter_change_cb = std::bind(&L2CProjectorComponent::CB_param_reset, this, std::placeholders::_1);
   reset_param_handler_ = this->add_on_set_parameters_callback(parameter_change_cb);
+
+  // callback
+  subscriber_pc = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+    "input_points", 
+    rclcpp::SensorDataQoS(), 
+    std::bind(&ColoringComponent::CB_cloud, this, std::placeholders::_1)\
+  );
+
+  subscriber_im = this->create_subscription<sensor_msgs::msg::Image>(
+    "input_image_raw", 
+    rclcpp::SensorDataQoS(), 
+    std::bind(&ColoringComponent::CB_image, this, std::placeholders::_1)\
+  );
+
+  publisher_pc = this->create_publisher<sensor_msgs::msg::PointCloud2>("/hoge_points", 10);
 }
 
-rcl_interfaces::msg::SetParametersResult FrameConnectorComponent::CB_param_reset(const std::vector<rclcpp::Parameter> & params){
+rcl_interfaces::msg::SetParametersResult L2CProjectorComponent::CB_param_reset(const std::vector<rclcpp::Parameter> & params){
   auto result = rcl_interfaces::msg::SetParametersResult();
   for(auto&& param : params){
     if(param.get_name() == "tf_parent2child.x"){
@@ -55,7 +63,7 @@ rcl_interfaces::msg::SetParametersResult FrameConnectorComponent::CB_param_reset
   return result;
 }
 
-void FrameConnectorComponent::set_init_param()
+void L2CProjectorComponent::set_init_param()
 {
   declare_parameter("frame_parent", "parent");
   declare_parameter("frame_child", "child");
@@ -75,7 +83,7 @@ void FrameConnectorComponent::set_init_param()
   set_new_tf();
 }
 
-void FrameConnectorComponent::set_new_tf()
+void L2CProjectorComponent::set_new_tf()
 {
   geometry_msgs::msg::TransformStamped t;
   // Read message content and assign it to
