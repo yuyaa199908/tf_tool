@@ -4,7 +4,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, Command
 from launch_ros.actions import Node
-
+from launch.actions import ExecuteProcess
 
 def generate_launch_description():
     config = os.path.join(
@@ -20,4 +20,8 @@ def generate_launch_description():
             remappings=[],
             parameters=[config]
         ),
+        ExecuteProcess(
+            cmd=['ros2', 'run', 'rqt_reconfigure', 'rqt_reconfigure'],
+            output='screen'
+        )
     ])

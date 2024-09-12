@@ -32,6 +32,10 @@ class L2CProjectorComponent : public rclcpp::Node
     std::unique_ptr<tf2_ros::StaticTransformBroadcaster> tf_broadcaster_;
     // std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
+    image_geometry::PinholeCameraModel cam_model;
+    Eigen::Matrix4f matrix_c2l;
+
+
     void set_init_param();
     void set_new_tf();
 };

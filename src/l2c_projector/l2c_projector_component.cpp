@@ -15,10 +15,8 @@ L2CProjectorComponent::L2CProjectorComponent(const rclcpp::NodeOptions & options
 
   // Initialize the transform listener
 
-  // parameter callback
+  // set camera_info from yaml
   set_init_param();
-  auto parameter_change_cb = std::bind(&L2CProjectorComponent::CB_param_reset, this, std::placeholders::_1);
-  reset_param_handler_ = this->add_on_set_parameters_callback(parameter_change_cb);
 
   // callback
   subscriber_pc = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -33,76 +31,117 @@ L2CProjectorComponent::L2CProjectorComponent(const rclcpp::NodeOptions & options
     std::bind(&ColoringComponent::CB_image, this, std::placeholders::_1)\
   );
 
-  publisher_pc = this->create_publisher<sensor_msgs::msg::PointCloud2>("/hoge_points", 10);
+  publisher_projected = this->create_publisher<sensor_msgs::msg::Image>("/projected", 10);
 }
 
-rcl_interfaces::msg::SetParametersResult L2CProjectorComponent::CB_param_reset(const std::vector<rclcpp::Parameter> & params){
-  auto result = rcl_interfaces::msg::SetParametersResult();
-  for(auto&& param : params){
-    if(param.get_name() == "tf_parent2child.x"){
-      p2c_x = param.as_double();
-    }else if(param.get_name() == "tf_parent2child.y"){
-      p2c_y = param.as_double();
-    }else if(param.get_name() == "tf_parent2child.z"){
-      p2c_z = param.as_double();
-    }else if(param.get_name() == "tf_parent2child.roll_deg"){
-      p2c_roll = param.as_double() * (M_PI / 180);
-    }else if(param.get_name() == "tf_parent2child.pitch_deg"){
-      p2c_pitch = param.as_double() * (M_PI / 180);
-    }else if(param.get_name() == "tf_parent2child.yaw_deg"){
-      p2c_yaw = param.as_double() * (M_PI / 180);
-    }
-  }
-
-  RCLCPP_INFO(this->get_logger(), "%s -> %s\ntranslate:{x=%f[m], y=%f[m], z=%f[m]}\nrotation:{roll=%f[rad], pitch=%f[rad], yaw=%f[rad]}",
-              frame_p.c_str(), frame_c.c_str(), p2c_x, p2c_y, p2c_z, p2c_roll, p2c_pitch, p2c_yaw);
-
-  set_new_tf();
-
-  result.successful = true;
-  return result;
-}
 
 void L2CProjectorComponent::set_init_param()
 {
-  declare_parameter("frame_parent", "parent");
-  declare_parameter("frame_child", "child");
-  frame_p = get_parameter("frame_parent").as_string();
-  frame_c = get_parameter("frame_child").as_string();
+  // define camera_info param
+  sensor_msgs::msg::CameraInfo cam_info;
+  RCLCPP_INFO(this->get_logger(), "define camera_info params");
+  declare_parameter("height", 0);
+  declare_parameter("width", 0);
+  declare_parameter("distortion_model", "distortion_model_hoge");
+  declare_parameter("header.frame_id", "frame_id_hoge");
+  declare_parameter("d", std::vector<float_t>({0.0, 0.0, 0.0, 0.0, 0.0}));
+  declare_parameter("k", std::vector<float_t>({0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
+  declare_parameter("r", std::vector<float_t>({0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
+  declare_parameter("p", std::vector<float_t>({0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
+  declare_parameter("binning_x", 0);
+  declare_parameter("binning_y", 0);
+  declare_parameter("roi.x_offset", 0);
+  declare_parameter("roi.y_offset", 0);
+  declare_parameter("roi.height", 0);
+  declare_parameter("roi.width", 0);
+  declare_parameter("roi.do_rectify", false);
+  
+  // set camera_info param
+  RCLCPP_INFO(this->get_logger(),"set camera_info params");
+  cam_info.height = get_parameter("height").as_int();
+  cam_info.width = get_parameter("width").as_int();
+  cam_info.distortion_model = get_parameter("distortion_model").as_string();
+  cam_info.header.frame_id = get_parameter("header.frame_id").as_string();
 
-  p2c_x = get_parameter("tf_parent2child.x").as_double();
-  p2c_y = get_parameter("tf_parent2child.y").as_double();
-  p2c_z = get_parameter("tf_parent2child.z").as_double();
-  p2c_roll = get_parameter("tf_parent2child.roll_deg").as_double() * (M_PI / 180);
-  p2c_pitch = get_parameter("tf_parent2child.pitch_deg").as_double() * (M_PI / 180);
-  p2c_yaw = get_parameter("tf_parent2child.yaw_deg").as_double() * (M_PI / 180);
-
-  RCLCPP_INFO(this->get_logger(), "%s -> %s\ntranslate:{x=%f[m], y=%f[m], z=%f[m]}\nrotation:{roll=%f[rad], pitch=%f[rad], yaw=%f[rad]}",
-              frame_p.c_str(), frame_c.c_str(), p2c_x, p2c_y, p2c_z, p2c_roll, p2c_pitch, p2c_yaw);
-
-  set_new_tf();
+  std::vector<double> d_vec;
+  get_parameter("d", d_vec);
+  cam_info.d = d_vec;
+  std::vector<double> k_vec;
+  get_parameter("k", k_vec);
+  for(int i = 0; i < 9; i++)cam_info.k[i] = k_vec[i];
+  std::vector<double> r_vec;
+  get_parameter("r", r_vec);
+  for(int i = 0; i < 9; i++) cam_info.r[i] = r_vec[i];
+  std::vector<double> p_vec;
+  get_parameter("p", p_vec);
+  for(int i = 0; i < 12; i++) cam_info.p[i] = p_vec[i];
+  cam_info.binning_x = get_parameter("binning_x").as_int();
+  cam_info.binning_y = get_parameter("binning_y").as_int();
+  cam_info.roi.x_offset = get_parameter("roi.x_offset").as_int();
+  cam_info.roi.y_offset = get_parameter("roi.y_offset").as_int();
+  cam_info.roi.height = get_parameter("roi.height").as_int();
+  cam_info.roi.width = get_parameter("roi.width").as_int();
+  cam_info.roi.do_rectify = get_parameter("roi.do_rectify").as_bool();
+  cam_model.fromCameraInfo(cam_info);
 }
 
-void L2CProjectorComponent::set_new_tf()
+void L2CProjectorComponent::CB_cloud(const sensor_msgs::msg::PointCloud2::SharedPtr cloud_msg)
 {
-  geometry_msgs::msg::TransformStamped t;
-  // Read message content and assign it to
-  // corresponding tf variables
-  t.header.stamp = this->get_clock()->now();
-  t.header.frame_id = frame_p.c_str();
-  t.child_frame_id = frame_c.c_str();
+  if(!is_received_image) return;
 
-  t.transform.translation.x = p2c_x;
-  t.transform.translation.y = p2c_y;
-  t.transform.translation.z = p2c_z;
+  // set colored_cloud
+  pcl::PointCloud<PointXYZIRGB>::Ptr trans_cloud(new pcl::PointCloud<PointXYZIRGB>); //新しいXYZRGB
+  pcl::fromROSMsg(*cloud_msg, *trans_cloud);  //受信した/camera/pointcloud をpclに変換 
 
-  tf2::Quaternion q;
-  q.setRPY(p2c_roll, p2c_roll, p2c_roll);
-  t.transform.rotation.x = q.x();
-  t.transform.rotation.y = q.y();
-  t.transform.rotation.z = q.z();
-  t.transform.rotation.w = q.w();
+  pcl::PointCloud<PointXYZIRGB>::Ptr colored_cloud(new pcl::PointCloud<PointXYZIRGB>); //新しいXYZRGB
+  pcl::transformPointCloud (*trans_cloud, *colored_cloud, matrix_c2l);
 
-  // Send the transformation
-  tf_broadcaster_->sendTransform(t);
+  // set rgb_image and projection_image
+  auto cv_image = cv_bridge::toCvShare(last_image_msg, last_image_msg->encoding);
+  cv::Mat rgb_image;
+  cv::cvtColor(cv_image->image ,rgb_image, CV_BGR2RGB);
+  
+  // copy or black 
+  cv::Mat projection_image = rgb_image.clone();
+
+  for(typename pcl::PointCloud<PointXYZIRGB>::iterator pt=colored_cloud->points.begin(); pt<colored_cloud->points.end(); pt++)
+  {   
+    if((*pt).z < 0) continue;
+
+      cv::Point3d pt_cv((*pt).x, (*pt).y, (*pt).z);
+      cv::Point2d uv;
+      uv = cam_model.project3dToPixel(pt_cv);
+      // RCLCPP_INFO(this->get_logger(), "uv.x:%f, uv.y:$%f", uv.x, uv.y);
+      if(uv.x>0 && uv.x < rgb_image.cols && uv.y > 0 && uv.y < rgb_image.rows)
+      {
+          // Coloring PointCloud
+          (*pt).b = rgb_image.at<cv::Vec3b>(uv)[0];
+          (*pt).g = rgb_image.at<cv::Vec3b>(uv)[1];
+          (*pt).r = rgb_image.at<cv::Vec3b>(uv)[2];
+          // Projection PointCloud
+          double range = sqrt( pow((*pt).x, 2.0) + pow((*pt).y, 2.0) + pow((*pt).z, 2.0));
+          COLOUR c = GetColour(int(range/20*255.0), 0, 255);
+          cv::circle(projection_image, uv, 1, cv::Scalar(int(255*c.b),int(255*c.g),int(255*c.r)), -1);
+      }
+  }
+
+  pcl::PointCloud<PointXYZIRGB>::Ptr output_cloud(new pcl::PointCloud<PointXYZIRGB>); //新しいXYZRGB
+  pcl::transformPointCloud (*colored_cloud, *output_cloud, matrix_l2c);
+
+  sensor_msgs::msg::PointCloud2 sensor_msg;
+  pcl::toROSMsg(*output_cloud, sensor_msg);
+  publisher_pc->publish(sensor_msg);
+
+  // if(is_received_image){
+  //   auto cv_img = cv_bridge::toCvShare(last_image_msg, last_image_msg->encoding);
+  //   cv::cvtColor(cv_img->image, targeted_image_, cv::COLOR_BGR2RGB);
+  //   RCLCPP_INFO(this->get_logger(), "col:%d, row:$%d", targeted_image_.cols, targeted_image_.rows);
+  // }
+}
+
+void L2CProjectorComponent::CB_image(const sensor_msgs::msg::Image::SharedPtr image_msg)
+{
+  // RCLCPP_INFO(this->get_logger(), "get image");
+  last_image_msg = image_msg;
+  is_received_image = true;
 }
